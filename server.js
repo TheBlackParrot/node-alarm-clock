@@ -185,7 +185,7 @@ var tcp = net.createServer(function(socket) {
 					"list",
 					"reload",
 					"snooze",
-					"toggle",
+					"toggle alarmname",
 					"exit"
 				];
 				socket.msg("??\r\n" + cmds.join("\r\n"));
