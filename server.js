@@ -178,10 +178,70 @@ var tcp = net.createServer(function(socket) {
 				}
 				break;
 
+			case "change":
+			case "mod":
+			case "modify":
+				var name = parts[1];
+
+				for(var i in alarms) {
+					var x = alarms[i];
+					if(x.data.name == name) {
+						var found = x;
+						break;
+					}
+				}
+
+				if(!found) {
+					socket.msg("!! alarm doesn't exist, can't modify");
+					return;
+				}
+				
+				if(found.job) {
+					cancelAlarm(found);
+				}
+
+				var what = parts[2];
+
+				switch(what) {
+					case "days":
+						var days = parts[3].split(",").map(function(x) {
+							return parseInt(x);
+						});
+						found.data.days = days;
+						break;
+
+					case "time":
+						var times = parts[3].split(":").map(function(x) {
+							return parseInt(x);
+						});
+						found.data.time.hour = times[0];
+						found.data.time.minute = times[1];
+						break;
+
+					default:
+						socket.msg("!! not a valid thing to change, use days or time");
+						return;
+						break;
+				}
+
+				var fdata = found.data;
+				var rule = new schedule.RecurrenceRule();
+				rule.dayOfWeek = fdata.days;
+				rule.hour = fdata.time.hour;
+				rule.minute = fdata.time.minute;
+
+				found.job = createAlarmJob(found, rule);
+
+				saveAlarms();
+
+				socket.msg("++ alarm modified");
+				break;
+
 			default:
 				var cmds = [
 					"create alarmname description_words time days,of,week,0-6",
 					"delete alarmname",
+					"modify alarmname days/time daysvalue/timevalue",
 					"list",
 					"reload",
 					"snooze",
