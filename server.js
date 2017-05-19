@@ -15,10 +15,18 @@ var alarm_sounds = fs.readdirSync("alarms").map(function(x) {
 
 var days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+function connectMsg(socket) {
+	var closest = getClosestAlarm();
+	var date_str = new Date(closest.job.nextInvocation()).toLocaleString();
+	socket.msg("Next alarm (" + closest.data.name + ") will trigger on " + date_str);
+}
+
 var tcp = net.createServer(function(socket) {
 	socket.msg = function(msg) {
 		this.write(msg + "\r\n");
 	}
+
+	connectMsg(socket);
 
 	socket.on('data', function(data) {
 		var msg = data.toString('utf8').trim();
@@ -237,6 +245,11 @@ var tcp = net.createServer(function(socket) {
 				socket.msg("++ alarm modified");
 				break;
 
+			case "dismiss":
+				var closest = getClosestAlarm();
+				cancelAlarm(closest);
+				break;
+
 			default:
 				var cmds = [
 					"create alarmname description_words time days,of,week,0-6",
@@ -246,6 +259,7 @@ var tcp = net.createServer(function(socket) {
 					"reload",
 					"snooze",
 					"toggle alarmname",
+					"dismiss",
 					"exit"
 				];
 				socket.msg("??\r\n" + cmds.join("\r\n"));
@@ -344,6 +358,25 @@ function stopAlarm() {
 	} catch(err) { 
 		console.log(err);
 	}
+}
+
+function getClosestAlarm() {
+	var invocs = [];
+	for(var i in alarms) {
+		var alarm_data = alarms[i].data;
+		if(alarm_data.enabled) {
+			invocs.push(alarms[i].job.nextInvocation());
+		}
+	}
+	invocs.sort(function(a, b) {
+		return a - b;
+	});
+
+	return alarms.find(function(alarm) {
+		if(alarm.data.enabled) {
+			return alarm.job.nextInvocation() == invocs[0];
+		}
+	});
 }
 
 function playAlarmSound(self_instance, filename) {
