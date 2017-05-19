@@ -16,6 +16,11 @@ var alarm_sounds = fs.readdirSync("alarms").map(function(x) {
 var days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 function connectMsg(socket) {
+	if(alarms.length <= 0) {
+		socket.msg("!! No alarms have been set.");
+		return;
+	}
+
 	var closest = getClosestAlarm();
 	var date_str = new Date(closest.job.nextInvocation()).toLocaleString();
 	socket.msg("Next alarm (" + closest.data.name + ") will trigger on " + date_str);
@@ -23,8 +28,12 @@ function connectMsg(socket) {
 
 var tcp = net.createServer(function(socket) {
 	socket.msg = function(msg) {
-		this.write(msg + "\r\n");
+		this.write(msg + "\r\n")
 	}
+
+	socket.on('error', function() {
+		return;
+	})
 
 	connectMsg(socket);
 
@@ -38,6 +47,11 @@ var tcp = net.createServer(function(socket) {
 			case "snooze":
 				stopAlarm();
 				socket.msg("++ snoozed");
+
+				alarm_follow_up = setTimeout(function() {
+					console.log("firing followup alarm");
+					playAlarmSound(false, alarm_sounds[Math.floor(Math.random() * alarm_sounds.length)]);
+				}, 5000);
 				break;
 
 			case "exit":
@@ -167,6 +181,11 @@ var tcp = net.createServer(function(socket) {
 				break;
 
 			case "list":
+				if(alarms.length <= 0) {
+					socket.msg("No alarms have been set.");
+					return;
+				}
+
 				for(var i in alarms) {
 					var alarm_data = alarms[i].data;
 					var days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -246,8 +265,20 @@ var tcp = net.createServer(function(socket) {
 				break;
 
 			case "dismiss":
+				if(alarms.length <= 0) {
+					socket.msg("!! No alarms have been set.");
+					return;
+				}
+
 				var closest = getClosestAlarm();
 				cancelAlarm(closest);
+				break;
+
+			case "passive_dismiss":
+				// meant to dismiss the 15 minute passive alarm, this ends all follow up alarms
+				clearTimeout(alarm_follow_up);
+				stopAlarm();
+				socket.msg("++ OK");
 				break;
 
 			default:
@@ -296,8 +327,8 @@ function createAlarmJob(obj, rule) {
 
 	var job = schedule.scheduleJob(rule, function(x) {
 		console.log("Firing alarm: " + x.data.description);
-		playAlarmSound(false, alarm_sounds[Math.floor(Math.random() * 5)]);
-	}.bind(null, obj));	
+		playAlarmSound(false, alarm_sounds[Math.floor(Math.random() * alarm_sounds.length)]);
+	}.bind(null, obj));
 
 	console.log("Set for " + new Date(job.nextInvocation()).toLocaleString());
 	return job;
@@ -348,6 +379,10 @@ function loadAlarms() {
 loadAlarms();
 
 function stopAlarm() {
+	if(!running) {
+		return;
+	}
+
 	running = false;
 	try {
 		audio.kill();
@@ -361,6 +396,10 @@ function stopAlarm() {
 }
 
 function getClosestAlarm() {
+	if(alarms.length <= 0) {
+		return;
+	}
+
 	var invocs = [];
 	for(var i in alarms) {
 		var alarm_data = alarms[i].data;
@@ -378,6 +417,8 @@ function getClosestAlarm() {
 		}
 	});
 }
+
+var alarm_follow_up;
 
 function playAlarmSound(self_instance, filename) {
 	if(!self_instance) {
